@@ -8,9 +8,9 @@ de detalle geográfico deseado. Además, ofrece la posibilidad de visualizar inf
 farmacia al hacer clic en su ubicación.
 
 Ejemplos de ejecución:
-![mapa1](./Primera%20etapa/Maps/images/Mapa%201.png)
-![mapa2](./Primera%20etapa/Maps/images/Mapa%202.png)
-![mapa3](./Primera%20etapa/Maps/images/Mapa%203.png)
+![mapa1](./Primera%20etapa/Maps/images/Mapa1.png)
+![mapa2](./Primera%20etapa/Maps/images/Mapa2.png)
+![mapa3](./Primera%20etapa/Maps/images/Mapa3.png)
 
 
 Código empleado:
