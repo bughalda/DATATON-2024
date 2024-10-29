@@ -1,0 +1,352 @@
+---
+title: "Análisis de la Encuesta Nacional de Inclusión Financiera (ENIF) 2021"
+output:
+  html_notebook: default
+---
+
+
+Este documento contiene datos del análisis de la encuesta ENIF 2021. Cargaremos los datos, los procesaremos y realizaremos varios análisis para comprender la inclusión financiera en México.
+
+```{r}
+rm(list=ls()) #limpia la memoria
+
+if(require(foreign)==F) {install.packages("foreign")}
+if(require(survey)==F) {install.packages("survey")}
+if(require(dplyr)==F) {install.packages("dplyr")}
+if(require(stringr)==F) {install.packages("stringr")}
+
+library(foreign)
+library(survey)
+library(dplyr)
+library(stringr)
+
+```
+
+```{r}
+dir_bds <- getwd()
+aux <- list.dirs()
+if (sum(str_count(aux,"conjunto_de_datos_tmodulo_enif_2021"))<1)
+{
+  print("Selecciona la ubicación de la carpeta que contiene las carpetas con los conjuntos de datos de la ENIF 2021")
+  dir_bds <- choose.dir()
+}
+rm(aux)
+```
+
+```{r}
+datos = read.csv(paste(dir_bds,'/conjunto_de_datos_tmodulo_enif_2021/conjunto_de_datos/conjunto_de_datos_tmodulo_enif_2021.csv',sep=""), header=TRUE, sep=",")
+temp_h = read.csv(paste(dir_bds,'/conjunto_de_datos_thogar_enif_2021/conjunto_de_datos/conjunto_de_datos_thogar_enif_2021.csv',sep=""), header=TRUE, sep=",")
+temp_v = read.csv(paste(dir_bds,'/conjunto_de_datos_tvivienda_enif_2021/conjunto_de_datos/conjunto_de_datos_tvivienda_enif_2021.csv',sep=""), header=TRUE, sep=",")
+temp_s = read.csv(paste(dir_bds,'/conjunto_de_datos_tsdem_enif_2021/conjunto_de_datos/conjunto_de_datos_tsdem_enif_2021.csv',sep=""), header=TRUE, sep=",")
+temp_s <- subset(temp_s,P2_3 %in% 1)
+temp_s <- temp_s[,!(names(temp_s) %in% c("N_REN","SEXO","EDAD"))]
+```
+
+```{r}
+datos <- merge(x=datos ,y=temp_v,by=c ("FOLIO","VIV_SEL","TLOC","REGION","EST_DIS","UPM_DIS"),all.x = TRUE )
+datos <- merge(x=datos ,y=temp_h,by=c ("FOLIO","VIV_SEL","HOGAR","EST_DIS","UPM_DIS"),all.x = TRUE )
+datos <- merge(x=datos ,y=temp_s,by=c ("FOLIO","VIV_SEL","HOGAR","TLOC","REGION","EST_DIS","UPM_DIS","FAC_HOG"),all.x = TRUE )
+rm(temp_h,temp_v,temp_s)
+```
+
+```{r}
+resultados_ENIF <- function(a_base_datos,b_disenio,c_poblacion,d_pregunta) {
+  DATO <- svyby(a_base_datos[c_poblacion],by = list(a_base_datos[d_pregunta]),b_disenio,svytotal)
+  DATO$coeficiente_variacion <- cv(DATO)*100
+  DATO$limite_inf <- confint(DATO,level=0.90)[,1]
+  DATO$limite_sup <- confint(DATO,level=0.90)[,2]
+  colnames(DATO)[1]="codigo_respuesta"
+  colnames(DATO)[2]="valor_poblacion"
+  colnames(DATO)[3]="error_estandar"
+  DATO$poblacion <- c_poblacion
+  DATO$pregunta <- d_pregunta
+  DATO$segmento_poblacion <- sum(DATO$valor_poblacion)
+  DATO$porcentaje <- (DATO$valor_poblacion/DATO$segmento_poblacion)*100
+  DATO[c("poblacion","pregunta","codigo_respuesta","valor_poblacion","porcentaje","error_estandar","coeficiente_variacion","limite_inf","limite_sup","segmento_poblacion")]
+}
+
+resultados_ENIF_grafica <- function(a_base_datos,b_disenio,c_poblacion,d_pregunta) {
+  DATO <- svyby(a_base_datos[c_poblacion],by = list(a_base_datos[d_pregunta]),b_disenio,svytotal)
+  DATO$coeficiente_variacion <- cv(DATO)*100
+  colnames(DATO)[1]="codigo_respuesta"
+  colnames(DATO)[2]="valor_poblacion"
+  colnames(DATO)[3]="error_estandar"
+  DATO$poblacion <- c_poblacion
+  DATO$pregunta <- d_pregunta
+  DATO$segmento_poblacion <- sum(DATO$valor_poblacion)
+  DATO$porcentaje <- (DATO$valor_poblacion/DATO$segmento_poblacion)*100
+  GRAF_DATO <- barplot(height=DATO$porcentaje,names=DATO$codigo_respuesta,ylab="Porcentaje",xlab = "Valores de la respuesta o indicador", main=paste("Resultados de la pregunta o indicador",tolower(d_pregunta)))
+  text(GRAF_DATO,DATO$porcentaje/2,labels=round(DATO$porcentaje,1), cex=1.25)
+  AUX_CV <- sum(DATO$coeficiente_variacion > 15)
+  rm(DATO)
+  if (AUX_CV > 0){mtext("Alguno de los valores tiene un coeficiente de variación superior a 15",side = 1, adj = 0, line = 0, cex = 0.75)}
+}
+
+promedios_ENIF <- function(a_base_datos,b_disenio,c_poblacion,d_pregunta) {
+  DATO <- svyby(a_base_datos[d_pregunta],by = list(a_base_datos[c_poblacion]),b_disenio,svymean)
+  DATO$coeficiente_variacion <- cv(DATO)*100
+  DATO$limite_inf <- confint(DATO,level=0.90)[,1]
+  DATO$limite_sup <- confint(DATO,level=0.90)[,2]
+  colnames(DATO)[1]="codigo_respuesta"
+  colnames(DATO)[2]="valor_promedio"
+  colnames(DATO)[3]="error_estandar"
+  DATO$poblacion <- c_poblacion
+  DATO$pregunta <- d_pregunta
+  DATO[c("poblacion","pregunta","codigo_respuesta","valor_promedio","error_estandar","coeficiente_variacion","limite_inf","limite_sup")]
+}
+```
+
+```{r}
+datos$CUENTA <- ifelse((datos$P5_4_1%in%"1" | datos$P5_4_2%in%"1" | datos$P5_4_3%in%"1" | datos$P5_4_4%in%"1" | datos$P5_4_5%in%"1" | datos$P5_4_6%in%"1" | datos$P5_4_7%in%"1" | datos$P5_4_8%in%"1" | datos$P5_4_9%in%"1"),1,2)
+datos$CREDITO <- ifelse((datos$P6_2_1%in%"1" | datos$P6_2_2%in%"1" | datos$P6_2_3%in%"1" | datos$P6_2_4%in%"1" | datos$P6_2_5%in%"1" | datos$P6_2_6%in%"1" | datos$P6_2_7%in%"1" | datos$P6_2_8%in%"1" | datos$P6_2_9%in%"1"),1,2)
+datos$SEGURO <- ifelse((datos$P8_1%in%"1" | datos$P8_2%in%"1"),1,ifelse((datos$P8_2%in%"9"),9,2))
+datos$AFORE <- datos$P9_1
+datos$PROD_FORMAL <- ifelse((datos$CUENTA%in%"1" | datos$CREDITO%in%"1" | datos$SEGURO%in%"1" | datos$AFORE%in%"1"),1, ifelse((datos$SEGURO%in%"9" | datos$AFORE%in%"9"),9,2))
+datos$PRODS_NUM_TIPOS <- ifelse(datos$CUENTA%in%1,1,0) + ifelse(datos$CREDITO%in%1,1,0) + ifelse(datos$SEGURO%in%1,1,0) + ifelse(datos$AFORE%in%1,1,0)
+
+datos$AHORRO_INF <- ifelse((datos$P5_1_1%in%"1" | datos$P5_1_2%in%"1" | datos$P5_1_3%in%"1" | datos$P5_1_4%in%"1" | datos$P5_1_5%in%"1" | datos$P5_1_6%in%"1"),1,2)
+datos$CREDITO_INF <- ifelse((datos$P6_1_1%in%"1" | datos$P6_1_2%in%"1" | datos$P6_1_3%in%"1" | datos$P6_1_4%in%"1" | datos$P6_1_5%in%"1"),1,2)
+
+datos$AHORRO_FOR <- ifelse((datos$P5_7_1%in%"1" | datos$P5_7_2%in%"1" | datos$P5_7_3%in%"1" | datos$P5_7_4%in%"1" | datos$P5_7_5%in%"1" | datos$P5_7_6%in%"1" | datos$P5_7_7%in%"1" | datos$P5_7_8%in%"1" | datos$P5_7_9%in%"1"),1,2)
+datos$AHORRO_TOTAL <- ifelse(datos$AHORRO_INF%in%"1" | datos$AHORRO_FOR%in%"1",1,2)
+```
+
+```{r}
+datos$POBN <- 1
+
+datos$POBM <- ifelse(datos$SEXO%in%"2",1,0)
+datos$POBH <- ifelse(datos$SEXO%in%"1",1,0)
+
+datos$POBU <- ifelse((datos$TLOC%in%"1" | datos$TLOC%in%"2"),1,0)
+datos$POBR <- ifelse((datos$TLOC%in%"3" | datos$TLOC%in%"4"),1,0)
+
+datos$POB70 <- ifelse(datos$EDAD<=70,1,0)
+
+datos$POBM70 <- ifelse(datos$SEXO%in%"2" & datos$EDAD<=70,1,0)
+datos$POBH70 <- ifelse(datos$SEXO%in%"1" & datos$EDAD<=70,1,0)
+
+datos$POBU70 <- ifelse((datos$TLOC%in%"1" | datos$TLOC%in%"2") & datos$EDAD<=70,1,0)
+datos$POBR70 <- ifelse((datos$TLOC%in%"3" | datos$TLOC%in%"4") & datos$EDAD<=70,1,0)
+```
+
+```{r}
+DIS <- svydesign(id=~UPM_DIS, strata=~EST_DIS, data=datos, weights=~FAC_ELE)
+```
+
+## Análisis
+
+```{r}
+resultados_ENIF (datos,DIS,"POB70","CUENTA")
+resultados_ENIF_grafica (datos,DIS,"POB70","CUENTA")
+```
+
+
+## 1. Análisis de Ahorro Formal e Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_FOR")
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_INF")
+```
+
+## 2. Uso de Crédito Formal e Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "CREDITO_INF")
+resultados_ENIF_grafica(datos, DIS, "POB70", "CREDITO")
+```
+
+## 3. Segmentación por Género
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "PROD_FORMAL")  # Mujeres
+resultados_ENIF_grafica(datos, DIS, "POBH", "PROD_FORMAL")  # Hombres
+```
+
+## 4. Acceso por Tipo de Localidad (Urbana vs Rural)
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBU", "PROD_FORMAL")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "PROD_FORMAL")  # Rural
+```
+
+## 5. Análisis de Tipos de Productos Financieros
+
+```{r}
+promedios_ENIF(datos, DIS, "POB70", "PRODS_NUM_TIPOS")
+```
+
+## 6. Distribución de Productos Financieros por Edad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+resultados_ENIF(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+```
+
+## 7. Acceso a Cuentas Financieras por Género y Tipo de Localidad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "CUENTA")  # Mujeres
+resultados_ENIF_grafica(datos, DIS, "POBH", "CUENTA")  # Hombres
+resultados_ENIF_grafica(datos, DIS, "POBU", "CUENTA")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CUENTA")  # Rural
+```
+
+## 8. Tasa de Ahorro Formal vs Ahorro Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_FOR")
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_INF")
+```
+
+## 9. Acceso a Seguros y Fondos de Ahorro para el Retiro (AFORE)
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "SEGURO")  # Mujeres con seguro
+resultados_ENIF_grafica(datos, DIS, "POBH", "SEGURO")  # Hombres con seguro
+resultados_ENIF_grafica(datos, DIS, "POB70", "AFORE")  # Personas menores de 70 con AFORE
+```
+
+## 10. Promedio de Productos Financieros Usados por Grupo de Edad
+
+```{r}
+promedios_ENIF(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+```
+
+## 11. Análisis de Disparidades Regionales en Acceso a Crédito
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "REGION", "CREDITO")
+```
+
+## 12. Relación entre Nivel Educativo y Uso de Productos Financieros
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "NIV", "PROD_FORMAL")
+```
+
+## 13. Porcentaje de Personas con Productos Financieros Formales por Grupo de Edad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "EDAD", "PROD_FORMAL")
+```
+
+## 14. Acceso a Crédito Formal e Informal por Localidad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBU", "CREDITO_INF")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CREDITO_INF")  # Rural
+resultados_ENIF_grafica(datos, DIS, "POBU", "CREDITO")      # Crédito formal urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CREDITO")      # Crédito formal rural
+```
+
+## 15. Promedio de Cuentas de Ahorro por Sexo y Edad
+
+```{r}
+promedios_ENIF(datos, DIS, "POBM70", "CUENTA")  # Mujeres menores de 70
+promedios_ENIF(datos, DIS, "POBH70", "CUENTA")  # Hombres menores de 70
+```
+
+## 1. Análisis de Ahorro Formal e Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_FOR")
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_INF")
+```
+
+## 2. Uso de Crédito Formal e Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "CREDITO_INF")
+resultados_ENIF_grafica(datos, DIS, "POB70", "CREDITO")
+```
+
+## 3. Segmentación por Género
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "PROD_FORMAL")  # Mujeres
+resultados_ENIF_grafica(datos, DIS, "POBH", "PROD_FORMAL")  # Hombres
+```
+
+## 4. Acceso por Tipo de Localidad (Urbana vs Rural)
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBU", "PROD_FORMAL")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "PROD_FORMAL")  # Rural
+```
+
+## 5. Análisis de Tipos de Productos Financieros
+
+```{r}
+promedios_ENIF(datos, DIS, "POB70", "PRODS_NUM_TIPOS")
+```
+
+## 6. Distribución de Productos Financieros por Edad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+resultados_ENIF(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+```
+
+## 7. Acceso a Cuentas Financieras por Género y Tipo de Localidad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "CUENTA")  # Mujeres
+resultados_ENIF_grafica(datos, DIS, "POBH", "CUENTA")  # Hombres
+resultados_ENIF_grafica(datos, DIS, "POBU", "CUENTA")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CUENTA")  # Rural
+```
+
+## 8. Tasa de Ahorro Formal vs Ahorro Informal
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_FOR")
+resultados_ENIF_grafica(datos, DIS, "POB70", "AHORRO_INF")
+```
+
+## 9. Acceso a Seguros y Fondos de Ahorro para el Retiro (AFORE)
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBM", "SEGURO")  # Mujeres con seguro
+resultados_ENIF_grafica(datos, DIS, "POBH", "SEGURO")  # Hombres con seguro
+resultados_ENIF_grafica(datos, DIS, "POB70", "AFORE")  # Personas menores de 70 con AFORE
+```
+
+## 10. Promedio de Productos Financieros Usados por Grupo de Edad
+
+```{r}
+promedios_ENIF(datos, DIS, "EDAD", "PRODS_NUM_TIPOS")
+```
+
+## 11. Análisis de Disparidades Regionales en Acceso a Crédito
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "REGION", "CREDITO")
+```
+
+## 12. Relación entre Nivel Educativo y Uso de Productos Financieros
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "NIV", "PROD_FORMAL")
+```
+
+## 13. Porcentaje de Personas con Productos Financieros Formales por Grupo de Edad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "EDAD", "PROD_FORMAL")
+```
+
+## 14. Acceso a Crédito Formal e Informal por Localidad
+
+```{r}
+resultados_ENIF_grafica(datos, DIS, "POBU", "CREDITO_INF")  # Urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CREDITO_INF")  # Rural
+resultados_ENIF_grafica(datos, DIS, "POBU", "CREDITO")      # Crédito formal urbano
+resultados_ENIF_grafica(datos, DIS, "POBR", "CREDITO")      # Crédito formal rural
+```
+
+## 15. Promedio de Cuentas de Ahorro por Sexo y Edad
+
+```{r}
+promedios_ENIF(datos, DIS, "POBM70", "CUENTA")  # Mujeres menores de 70
+promedios_ENIF(datos, DIS, "POBH70", "CUENTA")  # Hombres menores de 70
+```
