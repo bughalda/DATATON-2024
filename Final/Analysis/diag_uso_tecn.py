@@ -70,7 +70,7 @@ plt.ylabel('Cantidad de Personas')
 plt.xticks(rotation=45, ha='right')
 plt.tight_layout()
 plt.show()
-
+'''
 #-----------entidad federativa--------------#
 # Diccionario de mapeo de códigos de entidad a nombres de estados
 entidad_map = {
@@ -101,4 +101,62 @@ plt.figure(figsize=(10, 10))
 mexico_geo.plot(column='conteo', cmap='OrRd', linewidth=0.8, edgecolor='black', legend=True)
 plt.title('Mapa de Calor de Entidades por Cantidad de Personas')
 plt.axis('off')
+plt.show()
+'''
+#---------ESTRATO SOCIOECONOMICO----------------#
+# Definir el diccionario de mapeo para el estrato
+estrato_map = {
+    1: 'Bajo', 2: 'Medio bajo', 3: 'Medio alto', 4: 'Alto'
+}
+
+# Mapear los valores de estrato a sus nombres correspondientes
+data['ESTRATO'] = data['ESTRATO'].map(estrato_map)
+
+# Contar la cantidad de personas en cada nivel de estrato
+estrato_counts = data['ESTRATO'].value_counts().sort_index()
+
+# Graficar los datos
+plt.figure(figsize=(8, 5))
+estrato_counts.plot(kind='bar', color='lightcoral', edgecolor='black')
+plt.title('Distribución por Estrato Socioeconómico')
+plt.xlabel('Estrato')
+plt.ylabel('Cantidad de Personas')
+plt.xticks(rotation=0)
+plt.show()
+#-----------USO DE LAS TECNOLOGIAS------------#
+# Definir el diccionario de mapeo para respuestas de Sí y No
+yes_no_map = {1: 'Sí', 2: 'No'}
+
+# Aplicar el mapeo a cada columna de interés
+columns_to_map = {
+    'P8_13_1': 'Mensajería instantánea',
+    'P8_13_2': 'Contenidos de audio y video',
+    'P8_13_3': 'Adquirir bienes o servicios',
+    'P8_13_4': 'Tránsito o navegación asistida',
+    'P8_13_5': 'Juegos',
+    'P8_13_6': 'Redes sociales',
+    'P8_13_7': 'Banca móvil',
+    'P8_13_8': 'Editar fotos o videos'
+}
+
+# Crear un diccionario para almacenar los conteos de "Sí"
+yes_counts = {}
+
+for col, label in columns_to_map.items():
+    # Mapear los valores de la columna actual
+    data[col] = data[col].map(yes_no_map)
+    # Contar las respuestas "Sí" y almacenar el resultado
+    yes_counts[label] = data[col].value_counts().get('Sí', 0)
+
+# Convertir el diccionario a un DataFrame para graficar
+yes_counts_df = pd.DataFrame(list(yes_counts.items()), columns=['Actividad', 'Cantidad de Sí'])
+
+# Graficar los datos
+plt.figure(figsize=(10, 6))
+yes_counts_df.set_index('Actividad').plot(kind='bar', legend=False, color='lightblue', edgecolor='black')
+plt.title('Cantidad de Respuestas "Sí" por Actividad')
+plt.xlabel('Actividad')
+plt.ylabel('Cantidad de Respuestas "Sí"')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
 plt.show()
